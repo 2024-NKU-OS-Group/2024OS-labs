@@ -197,12 +197,12 @@ case IRQ_S_TIMER:
         */
         cprintf("Exception type: breakpoint\n");
         cprintf("ebreak caught at 0x%08x\n", tf->epc);
-        tf->epc += 4; 
+        tf->epc += 2; 
         break;
     ```
 
 ### 具体说明:
 - **`cprintf()`**: 一个格式化输出函数，可能用于向控制台输出调试信息。
 - **`tf->epc`**: 程序计数器寄存器（EPC，Exception Program Counter），保存了发生异常时的指令地址。
-- **`tf->epc += 4;`**: 该语句将EPC的值增加4字节，以跳过当前的指令并继续执行后面的指令（因为RISC-V中的标准指令长度为32位或4个字节）。
+- **`tf->epc += 2;`**: 该语句将EPC的值增加2字节，以跳过当前的指令并继续执行后面的指令。
 
