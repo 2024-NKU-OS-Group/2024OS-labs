@@ -4,11 +4,16 @@
 
 ### Instructions from 0x1000 to 0x1010
 
-0x1000: auipc t0,0x0  将当前 PC 加载到寄存器 t0
-0x1004: addi a1,t0,32   将 t0 的值加上 32 存储到 a1 中
-0x1008: csrr a0,mhartid  读取当前硬件线程的 ID 存储到 a0 中
-0x100c: ld t0,24(t0)  从内存地址 t0+24 处加载 64 位数据到 t0 中
-0x1010: jr t0  跳转到 t0 指定的地址执行
+0x1000: auipc t0,0x0  
+将当前 PC 加载到寄存器 t0
+0x1004: addi a1,t0,32   
+将 t0 的值加上 32 存储到 a1 中
+0x1008: csrr a0,mhartid  
+读取当前硬件线程的 ID 存储到 a0 中
+0x100c: ld t0,24(t0)  
+从内存地址 t0+24 处加载 64 位数据到 t0 中
+0x1010: jr t0  
+跳转到 t0 指定的地址执行
 
 # lab1
 
