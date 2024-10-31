@@ -120,7 +120,7 @@ static void buddy_free_pages(struct Page *base, size_t n) {
 ```
 
 ## 6. 运行结果
-![结果1](./pic/图片1/png)
+![结果1](./pic/图片1.png)
 
 # Challenge 2: SLUB 分配器实现分析
 
