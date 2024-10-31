@@ -120,7 +120,7 @@ static void buddy_free_pages(struct Page *base, size_t n) {
 ```
 
 ## 6. 运行结果
-
+![结果1](./pic/图片1/png)
 
 # Challenge 2: SLUB 分配器实现分析
 
@@ -223,7 +223,7 @@ void slub_debug() {
 ```
 
 - `slub_debug` 用于测试和输出分配器的状态，显示分配和释放后的 `free_list` 变化，验证分配器的正确性。
-- ![Uploading image.png…]()
+- ![结果2](./pic/图片2.png)
 
 
 ## 总结
