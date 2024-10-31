@@ -223,6 +223,8 @@ void slub_debug() {
 ```
 
 - `slub_debug` 用于测试和输出分配器的状态，显示分配和释放后的 `free_list` 变化，验证分配器的正确性。
+- ![Uploading image.png…]()
+
 
 ## 总结
 
