@@ -28,6 +28,9 @@ int kern_init(void) {
 
     pmm_init();  // init physical memory management
 
+    slub_initialize();
+    slub_debug();
+
     idt_init();  // init interrupt descriptor table
 
     clock_init();   // init clock interrupt
