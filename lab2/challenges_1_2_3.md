@@ -157,8 +157,36 @@ static large_block_t *large_blocks = NULL;
 
 ```c
 static void *allocate_small_block(size_t size) {
-    assert(size < PGSIZE);  // 确保分配小于页面大小
-    ...
+    assert(size < PGSIZE);  // 确保小块内存小于页面大小
+
+    mem_block_t *prev = free_list;
+    mem_block_t *current;
+    int required_units = BLOCK_UNITS(size);  // 计算所需块的数量
+
+    // 遍历空闲列表查找足够大的块
+    for (current = prev->next; ; prev = current, current = current->next) {
+        if (current->size_units >= required_units) {  // 找到合适大小的块
+            if (current->size_units == required_units) {  // 如果正好符合大小
+                prev->next = current->next;
+            } else {  // 如果当前块比需求大，分割块
+                mem_block_t *new_block = (mem_block_t *)((char *)current + required_units * BLOCK_UNIT);
+                new_block->size_units = current->size_units - required_units;
+                new_block->next = current->next;
+                prev->next = new_block;
+                current->size_units = required_units;
+            }
+            free_list = prev;  // 更新空闲列表头部
+            return current;
+        }
+        if (current == free_list) {  // 如果遍历完成仍未找到
+            current = (mem_block_t *)alloc_pages(1);  // 分配新页面
+            if (!current) {
+                return NULL;
+            }
+            free_small_block(current, PGSIZE);  // 将新页面添加到空闲列表
+            current = free_list;
+        }
+    }
 }
 ```
 
@@ -174,7 +202,36 @@ static void *allocate_small_block(size_t size) {
 ```c
 static void free_small_block(void *block, int size) {
     if (!block) return;
-    ...
+
+    mem_block_t *to_free = (mem_block_t *)block;
+    if (size) {
+        to_free->size_units = BLOCK_UNITS(size);  // 设置释放块的大小
+    }
+
+    mem_block_t *current;
+    // 查找插入位置，并确保按地址顺序排列
+    for (current = free_list; !(to_free > current && to_free < current->next); current = current->next) {
+        if (current >= current->next && (to_free > current || to_free < current->next)) {
+            break;
+        }
+    }
+
+    // 检查是否可以合并相邻的块
+    if ((mem_block_t *)((char *)to_free + to_free->size_units * BLOCK_UNIT) == current->next) {
+        to_free->size_units += current->next->size_units;
+        to_free->next = current->next->next;
+    } else {
+        to_free->next = current->next;
+    }
+
+    if ((mem_block_t *)((char *)current + current->size_units * BLOCK_UNIT) == to_free) {
+        current->size_units += to_free->size_units;
+        current->next = to_free->next;
+    } else {
+        current->next = to_free;
+    }
+
+    free_list = current;  // 更新空闲列表头部
 }
 ```
 
@@ -186,11 +243,28 @@ static void free_small_block(void *block, int size) {
 
 ```c
 void *slub_allocate(size_t size) {
-    ...
-    if (size < PGSIZE - BLOCK_UNIT) {  // 如果请求小于一页
-        ...
+    mem_block_t *small_block;
+    large_block_t *large_block;
+
+    if (size < PGSIZE - BLOCK_UNIT) {  // 如果请求小于一页，则分配小块
+        small_block = allocate_small_block(size + BLOCK_UNIT);
+        return small_block ? (void *)(small_block + 1) : NULL;
     }
-    ...
+
+    large_block = allocate_small_block(sizeof(large_block_t));  // 分配大块描述符
+    if (!large_block) return NULL;
+
+    large_block->order = ((size - 1) >> PGSHIFT) + 1;  // 计算页数
+    large_block->pages = (void *)alloc_pages(large_block->order);  // 分配多页内存
+
+    if (large_block->pages) {
+        large_block->next = large_blocks;
+        large_blocks = large_block;  // 将大块链接到大块列表
+        return large_block->pages;
+    }
+
+    free_small_block(large_block, sizeof(large_block_t));  // 失败时释放大块描述符
+    return NULL;
 }
 ```
 
@@ -204,7 +278,24 @@ void *slub_allocate(size_t size) {
 ```c
 void slub_release(void *block) {
     if (!block) return;
-    ...
+
+    if (!((uintptr_t)block & (PGSIZE - 1))) {  // 检查是否为大块
+        large_block_t *current_block = large_blocks;
+        large_block_t **previous = &large_blocks;
+
+        while (current_block) {  // 遍历大块列表
+            if (current_block->pages == block) {
+                *previous = current_block->next;
+                free_pages((struct Page *)block, current_block->order);  // 释放页
+                free_small_block(current_block, sizeof(large_block_t));  // 释放描述符
+                return;
+            }
+            previous = &current_block->next;
+            current_block = current_block->next;
+        }
+    }
+
+    free_small_block((mem_block_t *)block - 1, 0);  // 释放小块
 }
 ```
 
@@ -216,9 +307,23 @@ void slub_release(void *block) {
 
 ```c
 void slub_debug() {
-    ...
+    cprintf("SLUB allocator debug start\n");
+    cprintf("Number of free blocks: %d\n", count_free_blocks());
+
     void *p1 = slub_allocate(4096);
-    ...
+    cprintf("Number of free blocks after p1 allocation: %d\n", count_free_blocks());
+
+    void *p2 = slub_allocate(2);
+    void *p3 = slub_allocate(2);
+    cprintf("Number of free blocks after p2 and p3 allocation: %d\n", count_free_blocks());
+
+    slub_release(p2);
+    cprintf("Number of free blocks after p2 deallocation: %d\n", count_free_blocks());
+
+    slub_release(p3);
+    cprintf("Number of free blocks after p3 deallocation: %d\n", count_free_blocks());
+
+    cprintf("SLUB allocator debug end\n");
 }
 ```
 
