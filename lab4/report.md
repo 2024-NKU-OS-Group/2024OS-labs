@@ -239,3 +239,21 @@ proc_run(struct proc_struct *proc) {
 第一个线程idleproc是一个空闲进程。用于在系统没有其他任务需要执行时，占用 CPU 时间，同时便于进程调度的统一化。除此之外不做任何事情。
 第二个线程initproc是一个内核线程，它由函数kernel_thread创建，并在其中调用函数init_main。这个函数会打印信息。schedule函数会调度该进程使其切换后运行。
 
+# 扩展练习challenge
+## 说明语句local_intr_save(intr_flag);....local_intr_restore(intr_flag);是如何实现开关中断的？
+local_intr_save(intr_flag) 和 local_intr_restore(intr_flag) 通过保存和恢复中断状态来实现中断的开关。具体流程如下：
+1. local_intr_save(intr_flag) 的执行过程
+调用 __intr_save() 函数：在执行 local_intr_save(intr_flag) 时，实际上是调用了 __intr_save() 函数。该函数的作用是检查当前的中断状态，并根据中断状态决定是否禁用中断。 read_csr(sstatus) & SSTATUS_SIE：read_csr(sstatus) 会读取当前的 sstatus 寄存器，这个寄存器包含了当前中断的状态。SSTATUS_SIE 是其中的一个标志位，表示是否启用了中断。 
+如果 SSTATUS_SIE 为 1，表示中断已启用，__intr_save() 会执行 intr_disable() 来禁用中断。 
+如果 SSTATUS_SIE 为 0，表示中断未启用，__intr_save() 直接返回 0，不做任何操作。 
+保存当前中断状态：无论中断是否被禁用，__intr_save() 函数都会将当前中断状态（1 或 0）返回并存储到传入的变量 intr_flag 中。这是为了在后续恢复中断时参考这个状态。 
+2. 执行临界区代码
+中断被禁用：当 local_intr_save(intr_flag) 执行完毕并保存了中断状态后，程序进入临界区代码。此时如果中断被禁用，系统不会响应外部中断，从而避免了在关键代码执行过程中被打断，确保了代码的原子性。 
+中断未启用：如果中断在 local_intr_save 时就已禁用（即 intr_flag 为 0），那么程序继续执行临界区代码，期间不涉及中断操作。 
+3. local_intr_restore(intr_flag) 的执行过程
+调用 __intr_restore() 函数：在执行完临界区代码后，调用 local_intr_restore(intr_flag) 来恢复中断状态。此时，intr_flag 中存储了 local_intr_save 时保存的中断状态（1 或 0）。 如果 intr_flag 为 1，表示在进入临界区时中断被禁用，__intr_restore() 会调用 intr_enable() 来重新启用中断。 
+如果 intr_flag 为 0，表示在进入临界区时中断已经是禁用状态，因此不做任何操作，程序继续执行。 
+4. 恢复中断
+恢复中断状态：根据保存的 intr_flag 状态，local_intr_restore(intr_flag) 确保在临界区外的代码中，中断的状态得以恢复。如果之前中断被禁用，那么它会被恢复；如果中断已关闭，则恢复过程不会做任何更改。 
+总结
+通过 local_intr_save(intr_flag) 和 local_intr_restore(intr_flag)，系统能够在临界区代码执行时确保中断不会被打断。具体来说，local_intr_save 会保存当前中断状态并禁用中断，执行临界区代码时中断不会干扰。local_intr_restore 会根据保存的状态恢复中断，确保程序在执行完关键操作后恢复正常的中断处理。这个机制通常用于需要保证原子性操作的场景，如在多线程编程或中断驱动的系统中，避免由于中断导致的数据不一致问题。
