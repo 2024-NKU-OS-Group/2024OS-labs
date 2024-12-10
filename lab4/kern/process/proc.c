@@ -102,7 +102,18 @@ alloc_proc(void) {
      *       uint32_t flags;                             // Process flag
      *       char name[PROC_NAME_LEN + 1];               // Process name
      */
-
+        proc->state = PROC_UNINIT;
+        proc->pid = -1;
+        proc->runs = 0;
+        proc->kstack = 0;
+        proc->need_resched = 0;
+        proc->parent = NULL;
+        proc->mm = NULL;
+        memset(&(proc->context), 0, sizeof(struct context));
+        proc->tf = NULL;
+        proc->cr3 = boot_cr3;
+        proc->flags = 0;
+        memset(proc->name, 0, PROC_NAME_LEN + 1);
 
     }
     return proc;
@@ -162,18 +173,20 @@ get_pid(void) {
 // NOTE: before call switch_to, should load  base addr of "proc"'s new PDT
 void
 proc_run(struct proc_struct *proc) {
-    if (proc != current) {
-        // LAB4:EXERCISE3 YOUR CODE
-        /*
-        * Some Useful MACROs, Functions and DEFINEs, you can use them in below implementation.
-        * MACROs or Functions:
-        *   local_intr_save():        Disable interrupts
-        *   local_intr_restore():     Enable Interrupts
-        *   lcr3():                   Modify the value of CR3 register
-        *   switch_to():              Context switching between two processes
-        */
-       
+    if (proc != current) {//检查要切换的进程是否与当前正在运行的进程相同，如果相同则不需要切换。
+    bool intr_flag;//用于切换中断状态的标志位。
+
+    struct proc_struct *prev = current;//暂时保存当前进程
+    struct proc_struct *next = proc;// 保存需要切换的进程
+
+    local_intr_save(intr_flag);        // 禁用中断
+    {
+        current = proc;// 切换当前进程为要运行的进程。
+        lcr3(next->cr3);//切换页表，以便使用新进程的地址空间。这里通过加载新进程的页目录表(next)到CR3寄存器实现
+        switch_to(&(prev->context), &(next->context));//实现上下文切换。这里通过调用switch_to函数实现，实现当前进程和新进程的context切换。
     }
+    local_intr_restore(intr_flag);// 恢复之前的中断状态
+}
 }
 
 // forkret -- the first kernel entry point of a new thread/process
@@ -298,17 +311,51 @@ do_fork(uint32_t clone_flags, uintptr_t stack, struct trapframe *tf) {
     //    5. insert proc_struct into hash_list && proc_list
     //    6. call wakeup_proc to make the new child process RUNNABLE
     //    7. set ret vaule using child proc's pid
+    	if ((proc = alloc_proc()) == NULL) {
+		goto fork_out;
+	}
+	// 获取被拷贝的进程的pid号 即父进程的pid
+	//proc->parent = current;
+	// 分配大小为 KSTACKPAGE 的页面作为进程内核堆栈
+	setup_kstack(proc);
+	// 拷贝原进程的内存管理信息到新进程
+	copy_mm(clone_flags, proc);
+	// 拷贝原进程上下文到新进程
+	copy_thread(proc, stack, tf);
 
-    
 
-fork_out:
-    return ret;
+	bool intr_flag;
+	// 停止中断
+	local_intr_save(intr_flag);
+	// {} 用来限定花括号中变量的作用域，使其不影响外面。
+	{
+		proc->pid = get_pid();
+		// 新进程添加到 hash方式组织的的进程链表，以便于以后对某个指定的线程的查找（速度更快）
+		hash_proc(proc);
+		// 将线程加入到所有线程的链表中，以便于调度
+		list_add(&proc_list, &(proc->list_link));
+		// 将全局线程的数目加1
+		nr_process ++;
+	}
+	// 允许中断
+	local_intr_restore(intr_flag);
 
-bad_fork_cleanup_kstack:
-    put_kstack(proc);
-bad_fork_cleanup_proc:
-    kfree(proc);
-    goto fork_out;
+
+	// 唤醒新进程
+	wakeup_proc(proc);
+	// 新进程号
+	ret = proc->pid;
+
+    fork_out:
+        return ret;
+
+    bad_fork_cleanup_kstack:
+        put_kstack(proc);
+    bad_fork_cleanup_proc:
+        kfree(proc);
+        goto fork_out;
+
+
 }
 
 // do_exit - called by sys_exit
