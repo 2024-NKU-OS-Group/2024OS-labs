@@ -423,11 +423,11 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
     pte_t *ptep=NULL;
     
 
-    // if ((ptep = get_pte(mm->pgdir, addr, 0)) != NULL) {
-    //     if((*ptep & PTE_V) & ~(*ptep & PTE_W)) {
-    //         return cow_pgfault(mm, error_code, addr);
-    //     }
-    // }
+    if ((ptep = get_pte(mm->pgdir, addr, 0)) != NULL) {
+        if((*ptep & PTE_V) & ~(*ptep & PTE_W)) {
+            return cow_pgfault(mm, error_code, addr);
+        }
+    }
     // try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     // (notice the 3th parameter '1')
     if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) {
