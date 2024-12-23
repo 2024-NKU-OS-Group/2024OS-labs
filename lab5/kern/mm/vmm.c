@@ -421,7 +421,13 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
     ret = -E_NO_MEM;
 
     pte_t *ptep=NULL;
-  
+    
+
+    // if ((ptep = get_pte(mm->pgdir, addr, 0)) != NULL) {
+    //     if((*ptep & PTE_V) & ~(*ptep & PTE_W)) {
+    //         return cow_pgfault(mm, error_code, addr);
+    //     }
+    // }
     // try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     // (notice the 3th parameter '1')
     if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) {
@@ -458,6 +464,9 @@ do_pgfault(struct mm_struct *mm, uint_t error_code, uintptr_t addr) {
             //map of phy addr <--->
             //logical addr
             //(3) make the page swappable.
+            swap_in(mm, addr, &page);
+            page_insert(mm->pgdir, page, addr, perm);
+            swap_map_swappable(mm, addr, page, 1);
             page->pra_vaddr = addr;
         } else {
             cprintf("no swap_init_ok but ptep is %x, failed\n", *ptep);
